@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:pff/screens/dose_detail_screen.dart';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:developer' as developer; // Add this import for logging
+
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -26,9 +29,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final token = prefs.getString('token');
 
       if (token == null) {
+        developer.log('No token found, redirecting to login');
         Navigator.pushReplacementNamed(context, '/login');
         return;
       }
+
+      developer.log('Fetching doses with token: ${token.substring(0, 10)}...');
 
       final response = await http.get(
         Uri.parse('http://192.168.0.143:8000/api/doses'),
@@ -38,26 +44,45 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       );
 
+      developer.log('Response status code: ${response.statusCode}');
+      developer.log('Response body: ${response.body}');
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _doses = data['data'];
-          _isLoading = false;
-        });
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        developer.log('Decoded response: $responseData');
+
+        if (responseData.containsKey('data') && responseData['data'] is List) {
+          setState(() {
+            _doses = responseData['data'];
+            _isLoading = false;
+          });
+          developer.log('Successfully loaded ${_doses.length} doses');
+        } else {
+          setState(() {
+            _error = 'Invalid response format: data field is not a list';
+            _isLoading = false;
+          });
+          developer.log('Invalid response format: ${responseData['data']}');
+        }
       } else {
         setState(() {
-          _error = 'Failed to load doses';
+          _error = 'Failed to load doses: ${response.body}';
           _isLoading = false;
         });
+        developer.log('Failed to load doses: ${response.body}', error: 'API Error');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      developer.log(
+        'Error fetching doses',
+        error: e,
+        stackTrace: stackTrace,
+      );
       setState(() {
         _error = 'Error: $e';
         _isLoading = false;
       });
     }
   }
-
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
@@ -92,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           vertical: 8.0,
                         ),
                         child: ListTile(
-                          title: Text('Dose #${dose['id']}'),
+                          title: Text('Dossier #${dose['id']}'),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -102,7 +127,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           trailing: Icon(Icons.arrow_forward_ios),
                           onTap: () {
-                            // Navigate to dose details if needed
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DoseDetailScreen(doseId: dose['id']),
+                              ),
+                            );
                           },
                         ),
                       );
